@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Meepno 2</title>
+<style>
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html, body {
+    width: 100%;
+    min-height: 100vh;
+    background-color: #000000;
+    color: #ffffff;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* Header Area */
+.search-header {
+    width: 100%;
+    padding: 20px 24px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+}
+
+.search-form {
+    width: 100%;
+    max-width: 600px;
+}
+
+/* Search Input: Top Left, Thin, Orange */
+.search-input-page2 {
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #ff9500;
+    font-size: 20px;
+    font-weight: 300;
+    width: 100%;
+    direction: ltr;
+    text-align: left;
+    letter-spacing: 0.5px;
+}
+
+.search-input-page2::placeholder {
+    color: rgba(255, 149, 0, 0.5);
+    font-weight: 200;
+}
+
+/* Remove default search clear buttons in Chrome/Safari */
+.search-input-page2::-webkit-search-decoration,
+.search-input-page2::-webkit-search-cancel-button,
+.search-input-page2::-webkit-search-results-button,
+.search-input-page2::-webkit-search-results-decoration {
+    display: none;
+}
+
+/* Ultra-Thin Low-Contrast Divider Line Across Screen */
+.divider-line {
+    width: 100%;
+    height: 1px;
+    background-color: rgba(255, 255, 255, 0.12);
+}
+
+/* Results Container */
+.results-container {
+    width: 100%;
+    padding: 20px 24px 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.result-item {
+    color: #ffffff;
+    font-size: 16px;
+    font-weight: 300;
+    line-height: 1.5;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    cursor: pointer;
+    text-align: left;
+    direction: ltr;
+    transition: opacity 0.2s ease;
+}
+
+.result-item:active {
+    opacity: 0.6;
+}
+</style>
+</head>
+<body>
+
+    <!-- Header Section -->
+    <header class="search-header">
+        <form id="searchForm" class="search-form" action="https://www.google.com/search" method="GET">
+            <input 
+                type="search" 
+                name="q"
+                id="searchInput2" 
+                class="search-input-page2" 
+                placeholder="جستجو..." 
+                autocomplete="off"
+                autocorrect="off"
+                autocapitalize="none"
+                spellcheck="false"
+                inputmode="search"
+                enterkeyhint="search"
+                autofocus
+            />
+        </form>
+    </header>
+
+    <!-- Ultra-Thin Divider Line -->
+    <div class="divider-line"></div>
+
+    <!-- Live Search Results -->
+    <main id="resultsList" class="results-container"></main>
+
+<script>
+"use strict";
+
+const searchInput2 = document.getElementById("searchInput2");
+const searchForm = document.getElementById("searchForm");
+const resultsList = document.getElementById("resultsList");
+
+let debounceTimer = null;
+
+// تابع اصلی گرفتن پیشنهادها با JSONP (سازگار با همه مرورگرها بدون مشکل CORS)
+function fetchLiveResults(query) {
+    if (!query.trim()) {
+        resultsList.innerHTML = "";
+        return;
+    }
+
+    // حذف اسکریپت قبلی اگه هنوز لود نشده
+    const oldScript = document.getElementById("jsonp-suggest");
+    if (oldScript) oldScript.remove();
+
+    const callbackName = "__meepno_cb_" + Math.random().toString(36).substr(2, 9);
+    const script = document.createElement("script");
+    script.id = "jsonp-suggest";
+
+    window[callbackName] = function(res) {
+        if (res && res[1]) renderResults(res[1]);
+        delete window[callbackName];
+        if (script.parentNode) script.parentNode.removeChild(script);
+    };
+
+    // استفاده از client=firefox برای بالاترین سرعت و سبک‌ترین دیتا
+    script.src = `https://suggestqueries.google.com/complete/search?client=firefox&q=${encodeURIComponent(query)}&callback=${callbackName}`;
+    document.body.appendChild(script);
+}
+
+// رندر کردن نتایج توی صفحه
+function renderResults(list) {
+    resultsList.innerHTML = "";
+
+    if (!list || list.length === 0) return;
+
+    const fragment = document.createDocumentFragment();
+    list.forEach(itemText => {
+        const div = document.createElement("div");
+        div.className = "result-item";
+        div.textContent = itemText;
+        
+        // کلیک روی هر پیشنهاد -> پرواز به گوگل
+        div.addEventListener("click", () => {
+            window.location.href = `https://www.google.com/search?q=${encodeURIComponent(itemText)}`;
+        });
+
+        fragment.appendChild(div);
+    });
+
+    resultsList.appendChild(fragment);
+}
+
+// تکنیک Debounce: ۱۵۰ میلی‌ثانیه مکث بعد از آخرین کلید تایپ‌شده برای لود برق‌آسا
+searchInput2.addEventListener("input", function() {
+    clearTimeout(debounceTimer);
+    const val = this.value;
+    debounceTimer = setTimeout(() => {
+        fetchLiveResults(val);
+    }, 150);
+});
+
+// ارسال مستقیم فرم با Enter کیبورد
+searchForm.addEventListener("submit", function(e) {
+    if (!searchInput2.value.trim()) {
+        e.preventDefault();
+    }
+});
+</script>
+</body>
+</html>
