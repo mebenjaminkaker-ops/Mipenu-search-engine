@@ -196,10 +196,15 @@ header {
 }
 
 .status-box {
-  padding: 30px;
-  color: #aaa;
+  padding: 20px;
+  color: #ffaaaa;
   text-align: center;
-  font-size: 14px;
+  font-size: 13px;
+  background: #1a0a0a;
+  border: 1px solid #552222;
+  border-radius: 10px;
+  margin-top: 10px;
+  word-break: break-all;
 }
 </style>
 </head>
@@ -263,7 +268,7 @@ async function executeGeminiSearch(searchQuery) {
   const apiKey = localStorage.getItem("meepno_gemini_key");
 
   if (!apiKey) {
-    statusBox.innerHTML = 'کلید Gemini API یافت نشد.<br><br><a href="./index-mobile.html" style="color:#00ff88; text-decoration:none;">رفتن به صفحه اصلی و ورود کلید</a>';
+    statusBox.innerHTML = 'کلید Gemini API یافت نشد.';
     return;
   }
 
@@ -285,7 +290,12 @@ async function executeGeminiSearch(searchQuery) {
     const data = await res.json();
     
     if (data.error) {
-      statusBox.textContent = "خطا از طرف سرور جمنای: " + data.error.message;
+      statusBox.textContent = "خطا از طرف سرور جمنای: " + (data.error.message || JSON.stringify(data.error));
+      return;
+    }
+
+    if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
+      statusBox.textContent = "پاسخ نامعتبر از سرور: " + JSON.stringify(data);
       return;
     }
 
@@ -298,11 +308,11 @@ async function executeGeminiSearch(searchQuery) {
       statusBox.style.display = "none";
       renderCards(parsedResults);
     } else {
-      statusBox.textContent = "نتیجه‌ای دریافت نشد.";
+      statusBox.textContent = "نتیجه‌ای در قالب آرایه دریافت نشد. متن خام: " + rawText;
     }
 
   } catch (err) {
-    statusBox.textContent = "خطا در پردازش یا اتصال به جمنای. لطفاً کلید API را بررسی کنید.";
+    statusBox.textContent = "خطای جاوا اسکریپت: " + err.message;
   }
 }
 
