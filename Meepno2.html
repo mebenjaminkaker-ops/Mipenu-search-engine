@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Meepno Search</title>
+<style>
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html, body {
+    width: 100%;
+    height: 100%;
+    background-color: #000000;
+    color: #ffffff;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    overflow-x: hidden;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.search-container {
+    width: 100%;
+    max-width: 500px;
+    margin: 0 auto;
+    padding: 20px 16px;
+}
+
+.search-form {
+    position: relative;
+    width: 100%;
+    margin-bottom: 20px;
+}
+
+.search-input {
+    width: 100%;
+    height: 52px;
+    background: #121212;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 14px;
+    padding: 0 16px;
+    color: #ffffff;
+    font-size: 16px;
+    outline: none;
+    transition: border-color 0.3s;
+}
+
+.search-input:focus {
+    border-color: rgba(255, 255, 255, 0.6);
+}
+
+.results-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.result-item {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 14px 16px;
+    border-radius: 10px;
+    color: #e0e0e0;
+    font-size: 15px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.result-item:active {
+    background: rgba(255, 255, 255, 0.15);
+}
+</style>
+</head>
+<body>
+
+<div class="search-container">
+    <form class="search-form" id="searchForm" action="https://www.google.com/search" method="GET">
+        <input type="text" name="q" id="searchInput2" class="search-input" placeholder="جستجو کنید..." autofocus autocomplete="off">
+    </form>
+    
+    <div class="results-list" id="resultsList"></div>
+</div>
+
+<script>
+"use strict";
+
+const searchInput2 = document.getElementById("searchInput2");
+const searchForm = document.getElementById("searchForm");
+const resultsList = document.getElementById("resultsList");
+
+let debounceTimer = null;
+
+function fetchLiveResults(query) {
+    const trimmed = query.trim();
+    if (!trimmed) {
+        resultsList.innerHTML = "";
+        return;
+    }
+
+    const primaryUrl = `https://suggestqueries.google.com/complete/search?client=firefox&q=${encodeURIComponent(trimmed)}`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 1200);
+
+    fetch(primaryUrl, { signal: controller.signal })
+        .then(res => res.json())
+        .then(data => {
+            clearTimeout(timeoutId);
+            if (data && data[1] && data[1].length > 0) {
+                renderResults(data[1]);
+            } else {
+                fetchSecondaryJSONP(trimmed);
+            }
+        })
+        .catch(() => {
+            fetchSecondaryJSONP(trimmed);
+        });
+}
+
+function fetchSecondaryJSONP(query) {
+    const oldScript = document.getElementById("jsonp-suggest");
+    if (oldScript) oldScript.remove();
+
+    const callbackName = "__meepno_cb_" + Math.random().toString(36).substr(2, 9);
+    const script = document.createElement("script");
+    script.id = "jsonp-suggest";
+
+    let hasResponded = false;
+
+    window[callbackName] = function(res) {
+        hasResponded = true;
+        if (res && res[1] && res[1].length > 0) {
+            renderResults(res[1]);
+        } else {
+            fetchDuckDuckGoFallback(query);
+        }
+        delete window[callbackName];
+        if (script.parentNode) script.parentNode.removeChild(script);
+    };
+
+    setTimeout(() => {
+        if (!hasResponded) {
+            if (script.parentNode) script.parentNode.removeChild(script);
+            fetchDuckDuckGoFallback(query);
+        }
+    }, 1000);
+
+    script.src = `https://suggestqueries.google.com/complete/search?client=chrome&hl=fa&q=${encodeURIComponent(query)}&callback=${callbackName}`;
+    document.body.appendChild(script);
+}
+
+function fetchDuckDuckGoFallback(query) {
+    const oldDdscript = document.getElementById("ddg-suggest");
+    if (oldDdscript) oldDdscript.remove();
+
+    const callbackName = "__meepno_ddg_" + Math.random().toString(36).substr(2, 9);
+    const script = document.createElement("script");
+    script.id = "ddg-suggest";
+
+    window[callbackName] = function(res) {
+        if (res && Array.isArray(res)) {
+            const list = res.map(item => item.phrase);
+            renderResults(list);
+        }
+        delete window[callbackName];
+        if (script.parentNode) script.parentNode.removeChild(script);
+    };
+
+    script.src = `https://duckduckgo.com/ac/?callback=${callbackName}&q=${encodeURIComponent(query)}&type=list`;
+    document.body.appendChild(script);
+}
+
+function renderResults(list) {
+    resultsList.innerHTML = "";
+    if (!list || list.length === 0) return;
+
+    const fragment = document.createDocumentFragment();
+    list.forEach(itemText => {
+        const div = document.createElement("div");
+        div.className = "result-item";
+        div.textContent = itemText;
+        
+        div.addEventListener("click", () => {
+            window.location.href = `https://www.google.com/search?q=${encodeURIComponent(itemText)}`;
+        });
+
+        fragment.appendChild(div);
+    });
+
+    resultsList.appendChild(fragment);
+}
+
+searchInput2.addEventListener("input", function() {
+    clearTimeout(debounceTimer);
+    const val = this.value;
+    debounceTimer = setTimeout(() => {
+        fetchLiveResults(val);
+    }, 180);
+});
+
+searchForm.addEventListener("submit", function(e) {
+    if (!searchInput2.value.trim()) {
+        e.preventDefault();
+    }
+});
+</script>
+</body>
+</html>
