@@ -198,13 +198,14 @@ header {
 .status-box {
   padding: 20px;
   color: #ffaaaa;
+  background: #201010;
+  border: 1px solid #502020;
+  border-radius: 12px;
   text-align: center;
   font-size: 13px;
-  background: #1a0a0a;
-  border: 1px solid #552222;
-  border-radius: 10px;
-  margin-top: 10px;
-  word-break: break-all;
+  direction: ltr;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 </style>
 </head>
@@ -263,12 +264,12 @@ function submitQuery() {
 async function executeGeminiSearch(searchQuery) {
   resultsContainer.innerHTML = "";
   statusBox.style.display = "block";
-  statusBox.textContent = "در حال دریافت نتایج از هوش مصنوعی...";
+  statusBox.textContent = "در حال ارتباط با سرور جمنای...";
 
   const apiKey = localStorage.getItem("meepno_gemini_key");
 
   if (!apiKey) {
-    statusBox.innerHTML = 'کلید Gemini API یافت نشد.';
+    statusBox.innerHTML = 'کلید Gemini API یافت نشد.<br><br><a href="./index-mobile.html" style="color:#00ff88; text-decoration:none;">رفتن به صفحه اصلی و ورود کلید</a>';
     return;
   }
 
@@ -290,12 +291,12 @@ async function executeGeminiSearch(searchQuery) {
     const data = await res.json();
     
     if (data.error) {
-      statusBox.textContent = "خطا از طرف سرور جمنای: " + (data.error.message || JSON.stringify(data.error));
+      statusBox.textContent = "API Error: " + JSON.stringify(data.error, null, 2);
       return;
     }
 
-    if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
-      statusBox.textContent = "پاسخ نامعتبر از سرور: " + JSON.stringify(data);
+    if (!data.candidates || !data.candidates[0].content) {
+      statusBox.textContent = "Invalid response structure: " + JSON.stringify(data, null, 2);
       return;
     }
 
@@ -308,11 +309,11 @@ async function executeGeminiSearch(searchQuery) {
       statusBox.style.display = "none";
       renderCards(parsedResults);
     } else {
-      statusBox.textContent = "نتیجه‌ای در قالب آرایه دریافت نشد. متن خام: " + rawText;
+      statusBox.textContent = "Parsed data is not a valid array or empty.";
     }
 
   } catch (err) {
-    statusBox.textContent = "خطای جاوا اسکریپت: " + err.message;
+    statusBox.textContent = "Catch Error: " + err.message + "\nStack: " + err.stack;
   }
 }
 
