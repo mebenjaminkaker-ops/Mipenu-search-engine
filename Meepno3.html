@@ -106,7 +106,6 @@ header {
   width: 100%;
 }
 
-/* کارت‌های نهایی شیک و استاندارد */
 .card {
   display: flex;
   flex-direction: column;
@@ -261,16 +260,15 @@ async function executeGeminiSearch(searchQuery) {
   statusBox.style.display = "block";
   statusBox.textContent = "در حال دریافت نتایج از هوش مصنوعی...";
 
-  // خواندن کلید ثبت‌شده در صفحه تنظیمات اصلی
   const apiKey = localStorage.getItem("meepno_gemini_key");
 
   if (!apiKey) {
-    statusBox.innerHTML = 'کلید Gemini API یافت نشد.<br><br><a href="./index-mobile.html" style="color:#00ff88; text-decoration:none;">رفتن به تنظیمات و ورود کلید</a>';
+    statusBox.innerHTML = 'کلید Gemini API یافت نشد.<br><br><a href="./index-mobile.html" style="color:#00ff88; text-decoration:none;">رفتن به صفحه اصلی و ورود کلید</a>';
     return;
   }
 
   const promptText = `تو موتور جستجوی MEEPNO هستی. عبارت جستجوی کاربر: "${searchQuery}".
-پاسخ را دقیقاً و فقط به صورت یک آرایه JSON معتبر شامل ۱۰ نتیجه مرتبط برگردان. هیچ متن اضافه یا کدهای مارک‌داون (مثل \`\`\`json) ننویس.
+پاسخ را دقیقاً و فقط به صورت یک آرایه JSON معتبر شامل ۱۰ نتیجه مرتبط برگردان. هیچ متن اضافه یا کدهای مارک‌داون ننویس.
 هر عضو آرایه باید دقیقاً شامل این کلیدها باشد:
 - siteName: اسم اصلی و برند رسمی سایت بدون ترجمه (مثلاً GitHub, Wikipedia, YouTube)
 - url: لینک کامل صفحه (https://...)
@@ -338,4 +336,5 @@ function renderCards(results) {
 }
 </script>
 </body>
-</html>
+  </html>
+  
