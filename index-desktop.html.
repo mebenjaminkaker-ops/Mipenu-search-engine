@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#000000">
+<title>Meepno Ven</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+    width: 100%; min-height: 100%; background: #000; color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    overflow-x: hidden; -webkit-tap-highlight-color: transparent;
+}
+body { min-height: 100vh; min-height: 100dvh; }
+button, input { font: inherit; }
+
+/* Animated canvas */
+#dotsCanvas {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    z-index: 1; pointer-events: none; transition: opacity .4s ease;
+}
+
+/* Three-dot menu */
+.menu-btn {
+    position: fixed; top: 24px; right: 20px; z-index: 150;
+    display: flex; flex-direction: column; justify-content: space-between;
+    width: 20px; height: 18px; cursor: pointer; padding: 2px 0;
+    border: 0; background: transparent; appearance: none;
+}
+.menu-btn span {
+    display: block; width: 4px; height: 4px; background: #fff;
+    border-radius: 50%; margin: 0 auto; box-shadow: 0 0 6px rgba(255,255,255,.8);
+}
+
+/* Side settings panel */
+.settings-panel {
+    position: fixed; top: 0; right: 0; width: 72vw; max-width: 300px;
+    height: 100vh; height: 100dvh; background: #000;
+    border-left: 1px solid rgba(255,255,255,.15); z-index: 200;
+    padding: 80px 20px 30px;
+    transform: translateX(105%);
+    transition: transform .35s cubic-bezier(.1,.9,.2,1);
+    box-shadow: -10px 0 30px rgba(0,0,0,.9);
+}
+.settings-panel.open { transform: translateX(0); }
+
+.panel-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,.5);
+    z-index: 190; opacity: 0; visibility: hidden;
+    transition: opacity .3s ease, visibility .3s ease;
+}
+.panel-backdrop.show { opacity: 1; visibility: visible; }
+
+.setting-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,.08);
+}
+.setting-label { font-size: 14px; font-weight: 400; color: #fff; text-align: right; letter-spacing: .2px; }
+
+.toggle-switch {
+    position: relative; width: 44px; height: 24px; appearance: none;
+    -webkit-appearance: none; background: #ff3b30; outline: none;
+    border-radius: 20px; cursor: pointer; transition: background-color .3s ease;
+    flex-shrink: 0;
+}
+.toggle-switch:checked { background: #007aff; }
+.toggle-switch::before {
+    content: ''; position: absolute; width: 18px; height: 18px;
+    border-radius: 50%; top: 3px; left: 3px; background: #fff;
+    transition: transform .3s ease; box-shadow: 0 2px 4px rgba(0,0,0,.4);
+}
+.toggle-switch:checked::before { transform: translateX(20px); }
+
+/* Main layout */
+.app-container {
+    position: relative; z-index: 2; width: 100%; min-height: 100vh; min-height: 100dvh;
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+    padding: 140px 24px 30px;
+}
+.logo {
+    direction: ltr; font-family: system-ui, -apple-system, sans-serif;
+    font-size: 78px; font-weight: 900; letter-spacing: 16px;
+    color: #000; -webkit-text-stroke: 1.5px rgba(255,255,255,.95);
+    text-shadow: 0 0 12px rgba(255,255,255,.6), 0 0 24px rgba(255,255,255,.3);
+    user-select: none; margin-bottom: 60px; text-transform: uppercase;
+    transition: transform .3s ease, text-shadow .3s ease;
+}
+
+/* Search box */
+.search-wrapper {
+    position: relative; width: 100%; max-width: 440px; margin: 0 auto; z-index: 10;
+}
+.search-edge-glow {
+    position: absolute; inset: 0; border-radius: 16px;
+    background: linear-gradient(90deg, rgba(255,255,255,.85) 0%, transparent 25%, transparent 75%, rgba(255,255,255,.85) 100%);
+    filter: blur(14px); opacity: .85; z-index: 1; pointer-events: none;
+    transition: opacity .4s ease;
+}
+.search-box {
+    position: relative; z-index: 2; width: 100%; height: 60px;
+    background: #000; border-radius: 16px; border: 1px solid rgba(255,255,255,.25);
+    display: flex; align-items: center; padding: 0 18px;
+    box-shadow: inset 0 0 15px rgba(0,0,0,.9);
+    transition: border-color .25s ease;
+}
+.search-box:focus-within { border-color: rgba(255,255,255,.65); }
+.search-input {
+    width: 100%; height: 100%; border: 0; outline: 0; background: transparent;
+    color: #fff; text-align: center; font-size: 17px; font-weight: 300;
+    letter-spacing: .5px; caret-color: #fff; direction: auto;
+}
+.search-input::placeholder { color: rgba(255,255,255,.7); opacity: 1; }
+
+.suggestions {
+    display: none; position: absolute; top: calc(100% + 12px); right: 0; left: 0;
+    z-index: 30; overflow: hidden; border: 1px solid rgba(255,255,255,.15);
+    border-radius: 12px; background: rgba(0,0,0,.97);
+    box-shadow: 0 12px 35px rgba(0,0,0,.8);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+}
+.suggestions.show { display: block; }
+.suggestion {
+    display: block; width: 100%; min-height: 42px; padding: 11px 16px;
+    border: 0; border-bottom: 1px solid rgba(255,255,255,.07);
+    background: transparent; color: rgba(255,255,255,.88);
+    text-align: right; cursor: pointer; font-size: 15px;
+}
+.suggestion:last-child { border-bottom: 0; }
+.suggestion:hover, .suggestion.active { background: rgba(255,255,255,.09); }
+
+@media (max-width: 600px) {
+    .app-container { padding-top: 80px; }
+    .logo { font-size: 58px; letter-spacing: 12px; margin-bottom: 50px; }
+    .search-box { height: 54px; }
+    .search-input { font-size: 17px; }
+}
+</style>
+</head>
+<body>
+<canvas id="dotsCanvas"></canvas>
+
+<button type="button" class="menu-btn" id="menuBtn" aria-label="تنظیمات" aria-expanded="false">
+    <span></span><span></span><span></span>
+</button>
+
+<div class="panel-backdrop" id="backdrop"></div>
+
+<aside class="settings-panel" id="settingsPanel" aria-label="تنظیمات">
+    <div class="setting-item">
+        <label class="setting-label" for="cosmicToggle">حالت کیهانی</label>
+        <input type="checkbox" id="cosmicToggle" class="toggle-switch" checked>
+    </div>
+</aside>
+
+<main class="app-container">
+    <h1 class="logo">MEEPNO</h1>
+
+    <div class="search-wrapper" id="searchWrapper">
+        <div class="search-edge-glow" id="edgeGlow"></div>
+        <form id="searchForm" action="https://www.google.com/search" method="GET" style="width: 100%;">
+            <div class="search-box">
+                <input class="search-input" id="searchInput" name="q" type="text"
+                       placeholder="جستجو" autocomplete="off" spellcheck="false"
+                       aria-label="جستجو" autofocus>
+            </div>
+        </form>
+        <div class="suggestions" id="suggestions" role="listbox"></div>
+    </div>
+</main>
+
+<script>
+"use strict";
+
+/* Canvas background */
+const canvas = document.getElementById("dotsCanvas");
+const ctx = canvas.getContext("2d");
+const cosmicToggle = document.getElementById("cosmicToggle");
+const edgeGlow = document.getElementById("edgeGlow");
+let width = 0, height = 0, dots = [], animationId = null;
+const NUM_DOTS = 75, DOT_RADIUS = 1.5;
+
+function initDots() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    width = window.innerWidth; height = window.innerHeight;
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+    canvas.style.width = width + "px"; canvas.style.height = height + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    dots = [];
+    for (let i = 0; i < NUM_DOTS; i++) dots.push({
+        x: Math.random() * width, y: Math.random() * height,
+        vx: (Math.random() - .5) * .4, vy: (Math.random() - .5) * .4,
+        alpha: Math.random() * .5 + .4
+    });
+}
+function animateDots() {
+    animationId = null;
+    if (!cosmicToggle.checked || document.hidden) return;
+    ctx.clearRect(0, 0, width, height);
+    for (const dot of dots) {
+        dot.x += dot.vx; dot.y += dot.vy;
+        if (dot.x < 0) dot.x = width; if (dot.x > width) dot.x = 0;
+        if (dot.y < 0) dot.y = height; if (dot.y > height) dot.y = 0;
+        ctx.beginPath(); ctx.arc(dot.x, dot.y, DOT_RADIUS, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255,255,255,${dot.alpha})`;
+        ctx.shadowBlur = 4; ctx.shadowColor = "#fff"; ctx.fill();
+    }
+    ctx.shadowBlur = 0;
+    animationId = requestAnimationFrame(animateDots);
+}
+function startAnimation() {
+    if (animationId === null && cosmicToggle.checked && !document.hidden)
+        animationId = requestAnimationFrame(animateDots);
+}
+function stopAnimation() {
+    if (animationId !== null) cancelAnimationFrame(animationId);
+    animationId = null;
+}
+initDots(); startAnimation();
+window.addEventListener("resize", initDots);
+document.addEventListener("visibilitychange", () => document.hidden ? stopAnimation() : startAnimation());
+
+/* Settings Menu */
+const menuBtn = document.getElementById("menuBtn");
+const settingsPanel = document.getElementById("settingsPanel");
+const backdrop = document.getElementById("backdrop");
+function openSettings() {
+    settingsPanel.classList.add("open");
+    backdrop.classList.add("show");
+    menuBtn.setAttribute("aria-expanded", "true");
+}
+function closeSettings() {
+    settingsPanel.classList.remove("open");
+    backdrop.classList.remove("show");
+    menuBtn.setAttribute("aria-expanded", "false");
+}
+menuBtn.addEventListener("click", () => {
+    settingsPanel.classList.contains("open") ? closeSettings() : openSettings();
+});
+backdrop.addEventListener("click", closeSettings);
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeSettings(); });
+cosmicToggle.addEventListener("change", () => {
+    const on = cosmicToggle.checked;
+    canvas.style.opacity = on ? "1" : "0";
+    edgeGlow.style.opacity = on ? ".85" : "0";
+    if (on) startAnimation(); else { stopAnimation(); ctx.clearRect(0, 0, width, height); }
+});
+
+/* Search and Suggestions */
+const searchInput = document.getElementById("searchInput");
+const searchForm = document.getElementById("searchForm");
+const suggestionsBox = document.getElementById("suggestions");
+let suggestions = [], activeIndex = -1, timer = null;
+
+function hideSuggestions() {
+    suggestionsBox.classList.remove("show");
+    suggestionsBox.innerHTML = "";
+    suggestions = []; activeIndex = -1;
+}
+
+function executeSearch(query) {
+    if (!query.trim()) return;
+    window.location.href = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+}
+
+function renderSuggestions(items) {
+    suggestions = items; activeIndex = -1;
+    suggestionsBox.innerHTML = "";
+    if (!items || !items.length) { hideSuggestions(); return; }
+    
+    items.forEach((value) => {
+        const button = document.createElement("button");
+        button.type = "button"; button.className = "suggestion";
+        button.textContent = value;
+        button.addEventListener("click", () => {
+            executeSearch(value);
+        });
+        suggestionsBox.appendChild(button);
+    });
+    suggestionsBox.classList.add("show");
+}
+
+// ارسال درخواست پیشنهادات بدون مشکل CORS
+function getSuggestions(query) {
+    if (!query.trim()) { hideSuggestions(); return; }
+
+    const oldScript = document.getElementById("jsonp-suggest");
+    if (oldScript) oldScript.remove();
+
+    const callbackName = "__meepno_cb_" + Math.random().toString(36).substr(2, 9);
+    const script = document.createElement("script");
+    script.id = "jsonp-suggest";
+
+    window[callbackName] = function(res) {
+        if (res && res[1]) renderSuggestions(res[1]);
+        delete window[callbackName];
+        if (script.parentNode) script.parentNode.removeChild(script);
+    };
+
+    script.src = `https://suggestqueries.google.com/complete/search?client=firefox&q=${encodeURIComponent(query)}&callback=${callbackName}`;
+    document.body.appendChild(script);
+}
+
+searchInput.addEventListener("input", () => {
+    clearTimeout(timer);
+    const query = searchInput.value.trim();
+    timer = setTimeout(() => getSuggestions(query), 180);
+});
+
+searchInput.addEventListener("keydown", e => {
+    const buttons = suggestionsBox.querySelectorAll(".suggestion");
+    if ((e.key === "ArrowDown" || e.key === "ArrowUp") && buttons.length) {
+        e.preventDefault();
+        activeIndex = e.key === "ArrowDown"
+            ? (activeIndex + 1) % buttons.length
+            : (activeIndex <= 0 ? buttons.length - 1 : activeIndex - 1);
+        
+        buttons.forEach((button, i) => {
+            if (i === activeIndex) {
+                button.classList.add("active");
+                searchInput.value = button.textContent;
+            } else {
+                button.classList.remove("active");
+            }
+        });
+    } else if (e.key === "Enter") {
+        e.preventDefault();
+        if (activeIndex >= 0 && buttons[activeIndex]) {
+            executeSearch(buttons[activeIndex].textContent);
+        } else {
+            executeSearch(searchInput.value);
+        }
+    } else if (e.key === "Escape") {
+        hideSuggestions();
+    }
+});
+
+searchForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    executeSearch(searchInput.value);
+});
+
+document.addEventListener("click", e => {
+    if (!e.target.closest("#searchWrapper")) hideSuggestions();
+});
+</script>
+</body>
+</html>
