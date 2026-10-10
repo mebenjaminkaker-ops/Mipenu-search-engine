@@ -280,6 +280,8 @@ const fallbackBox = document.getElementById("fallback");
 const suggestionsList = document.getElementById("suggestions");
 
 const REQUEST_TIMEOUT = 8000;
+// جریمه‌ی امتیاز برای هر نتیجه‌ی بعدی از یک منبع (برای تنوع منابع)
+const SOURCE_RANK_PENALTY = 15;
 
 /* ---------- ابزارهای عمومی ---------- */
 
@@ -308,6 +310,15 @@ function safeUrl(u) {
     return (p.protocol === "http:" || p.protocol === "https:") ? p.href : null;
   } catch (e) {
     return null;
+  }
+}
+
+// آدرس خوانا برای نمایش (لینک اصلی دست‌نخورده می‌مونه)
+function displayUrl(u) {
+  try {
+    return decodeURIComponent(u);
+  } catch (e) {
+    return u;
   }
 }
 
@@ -434,17 +445,19 @@ function localSearch(sites, query) {
 
 /* ---------- جستجوی آنلاین (بدون کلید API) ---------- */
 
-async function wikipediaSearch(query, lang) {
+// ویکی‌پدیا، ویکی‌خبر، ویکی‌واژه: همگی API مدیاویکی یکسان دارن
+async function mediaWikiSearch(project, lang, label, baseScore, query) {
   const qn = normalize(query);
+  const host = `${lang}.${project}.org`;
   const data = await getJSON(
-    `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&srlimit=5&format=json&origin=*`
+    `https://${host}/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&srlimit=5&format=json&origin=*`
   );
   return ((data.query && data.query.search) || []).map((it, i) => ({
     title: it.title,
-    url: `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(it.title.replace(/ /g, "_"))}`,
+    url: `https://${host}/wiki/${encodeURIComponent(it.title.replace(/ /g, "_"))}`,
     desc: toPlainText(it.snippet),
-    source: "ویکی‌پدیا",
-    score: 40 - i * 4 + (normalize(it.title).includes(qn) ? 15 : 0)
+    source: label,
+    score: baseScore - i * 4 + (normalize(it.title).includes(qn) ? 15 : 0)
   }));
 }
 
@@ -458,7 +471,7 @@ async function wikidataSearch(query, lang) {
     url: `https://www.wikidata.org/wiki/${it.id}`,
     desc: it.description || "",
     source: "ویکی‌داده",
-    score: 30 - i * 3 + (normalize(it.label).includes(qn) ? 10 : 0)
+    score: 32 - i * 3 + (normalize(it.label).includes(qn) ? 10 : 0)
   }));
 }
 
@@ -471,7 +484,7 @@ async function githubSearch(query) {
     url: it.html_url,
     desc: (it.description || "") + "  ⭐ " + it.stargazers_count,
     source: "GitHub",
-    score: 28 - i * 3
+    score: 30 - i * 3
   }));
 }
 
@@ -484,7 +497,7 @@ async function stackOverflowSearch(query) {
     url: it.link,
     desc: `پاسخ‌ها: ${it.answer_count} · امتیاز: ${it.score}` + (it.is_answered ? " · پاسخ داده شده" : ""),
     source: "Stack Overflow",
-    score: 24 - i * 3
+    score: 28 - i * 3
   }));
 }
 
@@ -503,7 +516,8 @@ function addItems(items) {
     const titleKey = normalize(it.title);
     const existing = allResults.find(x =>
       x.url === it.url ||
-      (x.source !== "محلی" && it.source !== "محلی" && normalize(x.title) === titleKey)
+      (x.source !== "محلی" && it.source !== "محلی" &&
+       x.source === it.source && normalize(x.title) === titleKey)
     );
 
     if (existing) {
@@ -517,8 +531,25 @@ function addItems(items) {
   renderAll();
 }
 
+// چینش متنوع: هر نتیجه‌ی بعدی از یک منبع، کمی امتیاز از دست میده
+function rankResults() {
+  const bySource = {};
+  allResults.forEach(r => {
+    (bySource[r.source] = bySource[r.source] || []).push(r);
+  });
+  const ranked = [];
+  Object.keys(bySource).forEach(src => {
+    bySource[src]
+      .sort((a, b) => b.score - a.score)
+      .forEach((r, idx) => {
+        ranked.push({ item: r, eff: r.score - idx * SOURCE_RANK_PENALTY });
+      });
+  });
+  return ranked.sort((a, b) => b.eff - a.eff).map(x => x.item);
+}
+
 function renderAll() {
-  const sorted = allResults.slice().sort((a, b) => b.score - a.score);
+  const sorted = rankResults();
   resultsContainer.innerHTML = "";
   if (sorted.length > 0) hideStatus();
 
@@ -539,7 +570,7 @@ function renderAll() {
 
     const meta = makeEl("div", "meta-info");
     meta.appendChild(makeEl("div", "name", siteName));
-    meta.appendChild(makeEl("div", "url", item.url));
+    meta.appendChild(makeEl("div", "url", displayUrl(item.url)));
     top.appendChild(meta);
     top.appendChild(makeEl("span", "badge", item.source));
 
@@ -593,7 +624,6 @@ async function performSearch(query) {
   showStatus("در حال جستجو در MEEPNO...");
 
   const hasFa = /[\u0600-\u06FF]/.test(query);
-  const hasLatin = /[a-z]/i.test(query);
   const lang = hasFa ? "fa" : "en";
 
   // ۱) نتایج محلی، فوری
@@ -606,13 +636,13 @@ async function performSearch(query) {
 
   // ۲) نتایج آنلاین، هر کدوم مستقل (خرابی یکی روی بقیه اثر نداره)
   const tasks = [
-    () => wikipediaSearch(query, lang),
-    () => wikidataSearch(query, lang)
+    () => mediaWikiSearch("wikipedia", lang, "ویکی‌پدیا", 40, query),
+    () => mediaWikiSearch("wikinews", lang, "ویکی‌خبر", 34, query),
+    () => mediaWikiSearch("wiktionary", lang, "ویکی‌واژه", 26, query),
+    () => wikidataSearch(query, lang),
+    () => githubSearch(query),
+    () => stackOverflowSearch(query)
   ];
-  if (hasLatin) {
-    tasks.push(() => githubSearch(query));
-    tasks.push(() => stackOverflowSearch(query));
-  }
 
   pending = tasks.length;
   tasks.forEach(task => {
@@ -649,4 +679,4 @@ if (initialQuery && initialQuery.trim() !== "") {
 }
 </script>
 </body>
-          </html>
+  </html>
