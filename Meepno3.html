@@ -282,6 +282,8 @@ const suggestionsList = document.getElementById("suggestions");
 const REQUEST_TIMEOUT = 8000;
 // جریمه‌ی امتیاز برای هر نتیجه‌ی بعدی از یک منبع (برای تنوع منابع)
 const SOURCE_RANK_PENALTY = 15;
+// حداقل نسبت کلمه‌های مهم عبارت که باید با سایت محلی جور باشن
+const MIN_COVERAGE = 0.6;
 
 /* ---------- ابزارهای عمومی ---------- */
 
@@ -394,50 +396,78 @@ function hostWord(url) {
 function localSearch(sites, query) {
   const qn = normalize(query);
   const tokens = qn.split(/\s+/).filter(Boolean);
+  if (!tokens.length) return [];
+
+  // کلمه‌های مهم: حداقل ۳ حرف و غیرعددی
+  const significant = tokens.filter(t => t.length >= 3 && !/^\d+$/.test(t));
+  const need = significant.length ? significant : tokens;
+
   const out = [];
 
   sites.forEach(site => {
     const title = normalize(site.title);
     const url = normalize(site.url);
     const kws = (site.keywords || []).map(normalize);
-    const words = new Set(
-      [...title.split(/[^a-z0-9\u0600-\u06FF]+/), ...kws, hostWord(site.url)].filter(Boolean)
-    );
 
-    let score = 0;
-    if (title === qn) score += 100;
-    if (title.includes(qn)) score += 50;
-    if (url.includes(qn)) score += 30;
-    if (kws.some(k => k === qn)) score += 60;
-    else if (kws.some(k => k.includes(qn))) score += 40;
+    // کلمه‌های سایت: عنوان، keywords (کامل و تک‌تک کلمه‌ها) و اسم دامنه
+    const wordSet = new Set();
+    title.split(/[^a-z0-9\u0600-\u06FF]+/).forEach(w => w && wordSet.add(w));
+    kws.forEach(k => {
+      wordSet.add(k);
+      k.split(/\s+/).forEach(w => w && wordSet.add(w));
+    });
+    const hw = hostWord(site.url);
+    if (hw) wordSet.add(hw);
+    const words = Array.from(wordSet);
 
-    tokens.forEach(tok => {
-      let direct = false;
-      if (title.includes(tok)) { score += 10; direct = true; }
-      if (url.includes(tok)) { score += 5; direct = true; }
-      if (kws.some(k => k.includes(tok))) { score += 8; direct = true; }
+    // 2 = تطابق مستقیم، 1 = فازی (سخت‌گیرانه)، 0 = بدون تطابق
+    function matchToken(tok) {
+      if (words.some(w => w === tok || w.startsWith(tok))) return 2;
+      if (tok.length >= 4 && (title.includes(tok) || kws.some(k => k.includes(tok)))) return 2;
+      if (/[a-z]/.test(tok) && tok.length >= 3 && url.includes(tok)) return 2;
 
-      // جستجوی فازی برای غلط تایپی
-      if (!direct && tok.length >= 3) {
-        const maxDist = tok.length <= 4 ? 1 : 2;
+      if (tok.length >= 5) {
+        const maxDist = tok.length >= 8 ? 2 : 1;
         for (const w of words) {
-          if (Math.abs(w.length - tok.length) <= maxDist && levenshtein(w, tok) <= maxDist) {
-            score += 6;
-            break;
+          if (w.length >= 4 && Math.abs(w.length - tok.length) <= maxDist && levenshtein(w, tok) <= maxDist) {
+            return 1;
           }
         }
       }
+      return 0;
+    }
+
+    let matched = 0;
+    let score = 0;
+    need.forEach(tok => {
+      const m = matchToken(tok);
+      if (m) {
+        matched++;
+        score += m === 2 ? 10 : 5;
+      }
     });
 
-    if (score > 0) {
-      out.push({
-        title: site.title,
-        url: site.url,
-        desc: "دسترسی مستقیم و سریع از طریق موتور جستجوی محلی MEEPNO به این آدرس معتبر.",
-        source: "محلی",
-        score: score
-      });
+    // پوشش کافی نیست: این سایت نمایش داده نمیشه
+    if (matched === 0 || matched / need.length < MIN_COVERAGE) return;
+
+    // امتیاز اضافه برای تطابق کل عبارت
+    if (qn.length >= 2) {
+      if (title === qn) score += 100;
+      else if (title.includes(qn)) score += 50;
+      if (kws.some(k => k === qn)) score += 60;
+      else if (kws.some(k => k.includes(qn))) score += 40;
+      if (url.includes(qn)) score += 30;
     }
+    // امتیاز اضافه اگه همه‌ی کلمه‌های مهم جور باشن
+    if (matched === need.length) score += 20;
+
+    out.push({
+      title: site.title,
+      url: site.url,
+      desc: "دسترسی مستقیم و سریع از طریق موتور جستجوی محلی MEEPNO به این آدرس معتبر.",
+      source: "محلی",
+      score: score
+    });
   });
 
   return out;
