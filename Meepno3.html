@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MEEPNO Search Results</title>
+<title>MEEPNO Search</title>
 <style>
 * {
   box-sizing: border-box;
@@ -16,15 +16,17 @@ body {
   color: white;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
   min-height: 100vh;
-  padding: 20px 16px;
   display: flex;
-  justify-content: center;
-  -webkit-tap-highlight-color: transparent;
+  flex-direction: column;
+  overflow-x: hidden;
 }
 
 .page-wrapper {
   width: 100%;
   max-width: 850px;
+  margin: 0 auto;
+  padding: 16px;
+  flex-shrink: 0;
 }
 
 header {
@@ -32,7 +34,6 @@ header {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 30px;
 }
 
 .logo-animated {
@@ -100,112 +101,23 @@ header {
   user-select: none;
 }
 
-#results {
-  display: grid;
-  gap: 14px;
+/* بخش کادر نمایشگر گوگل با قابلیت فریم */
+.browser-container {
+  flex: 1;
   width: 100%;
-}
-
-.card {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 16px;
-  color: white;
-  text-decoration: none;
-  background: linear-gradient(110deg, #211010, #121212 75%);
-  border: 1px solid #353030;
-  border-radius: 15px;
-  transition: .2s;
-}
-
-.card:hover {
-  background: #251414;
-  border-color: #b33b3b;
-  transform: translateY(-2px);
-}
-
-.card-top {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.icon {
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  background: #352020;
-  border: 1px solid #633333;
-  color: #ffaaaa;
-  font-size: 13px;
-  font-weight: bold;
-  direction: ltr;
-}
-
-.meta-info {
-  display: flex;
-  flex-direction: column;
+  position: relative;
+  background: #ffffff;
+  margin-top: 15px;
+  border-top: 1px solid #222;
   overflow: hidden;
 }
 
-.name {
-  font-size: 14px;
-  font-weight: bold;
-  direction: ltr;
-  text-align: right;
-  margin-bottom: 2px;
-}
-
-.url {
-  color: #aaa;
-  font-size: 11px;
-  direction: ltr;
-  text-align: right;
-  overflow-wrap: anywhere;
-}
-
-.card-body {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+/* این تیکه فریم رو لود می‌کنه و طوری تنظیمش می‌کنیم که بخش زاید بالای گوگل برش بخوره */
+iframe {
   width: 100%;
-}
-
-.title {
-  color: #ffffff;
-  font-size: 17px;
-  font-weight: 700;
-  line-height: 1.4;
-  text-align: right;
-}
-
-.description {
-  color: #a0a0a0;
-  font-size: 12px;
-  line-height: 1.6;
-  text-align: right;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.status-box {
-  padding: 20px;
-  color: #ffaaaa;
-  background: #201010;
-  border: 1px solid #502020;
-  border-radius: 12px;
-  text-align: center;
-  font-size: 13px;
-  direction: ltr;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
+  height: calc(100vh - 100px);
+  border: none;
+  background: #121212;
 }
 </style>
 </head>
@@ -221,11 +133,10 @@ header {
       </div>
     </form>
   </header>
+</div>
 
-  <main>
-    <div id="statusBox" class="status-box" style="display: none;"></div>
-    <section id="results"></section>
-  </main>
+<div class="browser-container">
+  <iframe id="searchFrame" src="about:blank"></iframe>
 </div>
 
 <script>
@@ -234,15 +145,18 @@ header {
 const searchInput = document.getElementById("searchInput");
 const searchForm = document.getElementById("searchForm");
 const searchBtn = document.getElementById("searchBtn");
-const resultsContainer = document.getElementById("results");
-const statusBox = document.getElementById("statusBox");
+const searchFrame = document.getElementById("searchFrame");
 
+// گرفتن کوئری از URL موقع لود صفحه
 const urlParams = new URLSearchParams(window.location.search);
 const query = urlParams.get("q");
 
 if (query && query.trim() !== "") {
   searchInput.value = query;
-  executeDirectSearch(query);
+  loadGoogleSearch(query);
+} else {
+  // صفحه پیش‌فرض گوگل اگر چیزی سرچ نشده بود
+  searchFrame.src = "https://www.google.com/ncr";
 }
 
 searchForm.addEventListener("submit", (e) => {
@@ -261,104 +175,12 @@ function submitQuery() {
   }
 }
 
-async function executeDirectSearch(searchQuery) {
-  resultsContainer.innerHTML = "";
-  statusBox.style.display = "block";
-  statusBox.textContent = "در حال جستجو با داگ‌داگ‌گو...";
-
-  // استفاده از API رسمی و رایگان داگ‌داگ‌گو
-  const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(searchQuery)}&format=json&no_html=1&skip_disambig=1`;
-
-  try {
-    const res = await fetch(url);
-    if (!res.ok) {
-      throw new Error('خطا در دریافت اطلاعات از داگ‌داگ‌گو');
-    }
-
-    const data = await res.json();
-    statusBox.style.display = "none";
-
-    let results = [];
-
-    // اگر نتیجه اصلی موجود بود
-    if (data.Heading && data.AbstractURL) {
-      results.push({
-        title: data.Heading,
-        url: data.AbstractURL,
-        content: data.Abstract || data.Heading
-      });
-    }
-
-    // استخراج نتایج مرتبط (Related Topics)
-    if (data.RelatedTopics && data.RelatedTopics.length > 0) {
-      data.RelatedTopics.forEach(item => {
-        if (item.Text && item.FirstURL) {
-          results.push({
-            title: item.Text.split(' - ')[0] || item.Text,
-            url: item.FirstURL,
-            content: item.Text
-          });
-        } else if (item.Topics) {
-          item.Topics.forEach(subItem => {
-            if (subItem.Text && subItem.FirstURL) {
-              results.push({
-                title: subItem.Text.split(' - ')[0] || subItem.Text,
-                url: subItem.FirstURL,
-                content: subItem.Text
-              });
-            }
-          });
-        }
-      });
-    }
-
-    if (results.length > 0) {
-      renderCards(results);
-    } else {
-      statusBox.style.display = "block";
-      statusBox.textContent = "نتیجه‌ای پیدا نشد!";
-    }
-
-  } catch (err) {
-    statusBox.style.display = "block";
-    statusBox.textContent = "خطا در ارتباط: " + err.message;
-  }
-}
-
-function renderCards(results) {
-  resultsContainer.innerHTML = "";
-
-  results.forEach(item => {
-    const card = document.createElement("a");
-    card.className = "card";
-    card.href = item.url || "#";
-    card.target = "_blank";
-
-    let siteName = "DuckDuckGo";
-    try {
-      const parsedUrl = new URL(item.url);
-      siteName = parsedUrl.hostname.replace('www.', '');
-    } catch(e) {}
-
-    const iconChar = siteName.substring(0, 2).toUpperCase();
-
-    card.innerHTML = `
-      <div class="card-top">
-        <div class="icon">${iconChar}</div>
-        <div class="meta-info">
-          <div class="name">${siteName}</div>
-          <div class="url">${item.url || "#"}</div>
-        </div>
-      </div>
-      <div class="card-body">
-        <div class="title">${item.title || ""}</div>
-        <div class="description">${item.content || ""}</div>
-      </div>
-    `;
-
-    resultsContainer.appendChild(card);
-  });
+function loadGoogleSearch(searchQuery) {
+  // آدرس جستجوی مستقیم گوگل
+  const googleSearchUrl = `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}&igu=1`;
+  searchFrame.src = googleSearchUrl;
 }
 </script>
 </body>
-</html>
+  </html>
+    
