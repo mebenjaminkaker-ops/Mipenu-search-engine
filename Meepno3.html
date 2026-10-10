@@ -150,6 +150,7 @@ header {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  min-width: 0;
 }
 
 .name {
@@ -168,6 +169,19 @@ header {
   overflow-wrap: anywhere;
 }
 
+.badge {
+  margin-inline-start: auto;
+  align-self: flex-start;
+  flex-shrink: 0;
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  color: #00ff88;
+  background: rgba(0, 255, 136, 0.08);
+  border: 1px solid rgba(0, 255, 136, 0.35);
+  white-space: nowrap;
+}
+
 .card-body {
   display: flex;
   flex-direction: column;
@@ -181,6 +195,7 @@ header {
   font-weight: 700;
   line-height: 1.4;
   text-align: right;
+  overflow-wrap: anywhere;
 }
 
 .description {
@@ -203,9 +218,32 @@ header {
   border-radius: 12px;
   text-align: center;
   font-size: 13px;
-  direction: ltr;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+  margin-bottom: 14px;
+}
+
+.fallback {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  margin-top: 22px;
+  font-size: 12px;
+  color: #888;
+}
+
+.fallback a {
+  color: #00ff88;
+  text-decoration: none;
+  padding: 6px 14px;
+  border: 1px solid rgba(0, 255, 136, 0.4);
+  border-radius: 20px;
+}
+
+.fallback a:hover {
+  background: rgba(0, 255, 136, 0.1);
 }
 </style>
 </head>
@@ -216,7 +254,8 @@ header {
     <span class="logo-animated">MEEPNO</span>
     <form class="search-form" id="searchForm">
       <div class="search-box">
-        <input type="text" id="searchInput" class="search-input" placeholder="جستجو..." autocomplete="off">
+        <input type="text" id="searchInput" class="search-input" placeholder="جستجو..." autocomplete="off" list="suggestions">
+        <datalist id="suggestions"></datalist>
         <span class="search-icon-left" id="searchBtn">⌕</span>
       </div>
     </form>
@@ -225,6 +264,7 @@ header {
   <main>
     <div id="statusBox" class="status-box" style="display: none;"></div>
     <section id="results"></section>
+    <div id="fallback" class="fallback" style="display: none;"></div>
   </main>
 </div>
 
@@ -236,117 +276,93 @@ const searchForm = document.getElementById("searchForm");
 const searchBtn = document.getElementById("searchBtn");
 const resultsContainer = document.getElementById("results");
 const statusBox = document.getElementById("statusBox");
+const fallbackBox = document.getElementById("fallback");
+const suggestionsList = document.getElementById("suggestions");
 
-const urlParams = new URLSearchParams(window.location.search);
-const query = urlParams.get("q");
+const REQUEST_TIMEOUT = 8000;
 
-if (query && query.trim() !== "") {
-  searchInput.value = query;
-  performLocalSearch(query);
+/* ---------- ابزارهای عمومی ---------- */
+
+// نرمال‌سازی: ی/ک عربی، نیم‌فاصله، اعراب، ارقام فارسی و عربی
+function normalize(str) {
+  return String(str || "")
+    .toLowerCase()
+    .replace(/ي/g, "ی")
+    .replace(/ك/g, "ک")
+    .replace(/[\u200c\u200d]/g, "")
+    .replace(/[\u064B-\u065F\u0670]/g, "")
+    .replace(/[۰-۹]/g, d => String(d.charCodeAt(0) - 0x06F0))
+    .replace(/[٠-٩]/g, d => String(d.charCodeAt(0) - 0x0660))
+    .trim();
 }
 
-searchForm.addEventListener("submit", (e) => {
-  e.preventDefault();
-  submitQuery();
-});
-
-searchBtn.addEventListener("click", () => {
-  submitQuery();
-});
-
-function submitQuery() {
-  const val = searchInput.value.trim();
-  if (val) {
-    window.location.href = `./Meepno3.html?q=${encodeURIComponent(val)}`;
-  }
+// حذف تگ‌ها و تبدیل HTML entity به متن ساده (بدون اجرای کد)
+function toPlainText(html) {
+  const doc = new DOMParser().parseFromString(String(html || ""), "text/html");
+  return (doc.body.textContent || "").trim();
 }
 
-async function performLocalSearch(searchQuery) {
-  resultsContainer.innerHTML = "";
-  statusBox.style.display = "block";
-  statusBox.textContent = "در حال جستجو در دیتابیس MEEPNO...";
-
+function safeUrl(u) {
   try {
-    const res = await fetch("./sites.json");
-    if (!res.ok) throw new Error("فایل sites.json پیدا نشد!");
-    
-    const sites = await res.json();
-    const queryLower = searchQuery.toLowerCase().trim();
-    const queryTokens = queryLower.split(/\s+/);
-
-    // امتیازدهی به هر سایت بر اساس مطابقت
-    const scoredSites = sites.map(site => {
-      let score = 0;
-      const title = (site.title || "").toLowerCase();
-      const url = (site.url || "").toLowerCase();
-
-      if (title.includes(queryLower)) score += 50;
-      if (url.includes(queryLower)) score += 30;
-
-      queryTokens.forEach(token => {
-        if (title.includes(token)) score += 10;
-        if (url.includes(token)) score += 5;
-      });
-
-      return { site, score };
-    });
-
-    // فیلتر کردن نتایجی که امتیاز دارند و مرتب‌سازی بر اساس بیشترین امتیاز
-    const matched = scoredSites
-      .filter(item => item.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .map(item => item.site);
-
-    statusBox.style.display = "none";
-
-    if (matched.length > 0) {
-      renderCards(matched);
-    } else {
-      statusBox.style.display = "block";
-      statusBox.textContent = "نتیجه‌ای برای این عبارت پیدا نشد!";
-    }
-
-  } catch (err) {
-    statusBox.style.display = "block";
-    statusBox.textContent = "خطا در بارگذاری دیتابیس: " + err.message;
+    const p = new URL(u);
+    return (p.protocol === "http:" || p.protocol === "https:") ? p.href : null;
+  } catch (e) {
+    return null;
   }
 }
 
-function renderCards(results) {
-  resultsContainer.innerHTML = "";
-
-  results.forEach(item => {
-    const card = document.createElement("a");
-    card.className = "card";
-    card.href = item.url || "#";
-    card.target = "_blank";
-
-    let siteName = "MEEPNO";
-    try {
-      const parsedUrl = new URL(item.url);
-      siteName = parsedUrl.hostname.replace('www.', '');
-    } catch(e) {}
-
-    const iconChar = siteName.substring(0, 2).toUpperCase();
-
-    card.innerHTML = `
-      <div class="card-top">
-        <div class="icon">${iconChar}</div>
-        <div class="meta-info">
-          <div class="name">${item.title}</div>
-          <div class="url">${item.url}</div>
-        </div>
-      </div>
-      <div class="card-body">
-        <div class="title">${item.title}</div>
-        <div class="description">دسترسی مستقیم و سریع از طریق موتور جستجوی محلی MEEPNO به این آدرس معتبر[span_0](start_span)[span_0](end_span).</div>
-      </div>
-    `;
-
-    resultsContainer.appendChild(card);
-  });
+function levenshtein(a, b) {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
+    }
+    prev = cur;
+  }
+  return prev[b.length];
 }
-</script>
-</body>
-    </html>
-            
+
+async function getJSON(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    return await res.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function makeEl(tag, className, text) {
+  const el = document.createElement(tag);
+  if (className) el.className = className;
+  if (text !== undefined) el.textContent = text;
+  return el;
+}
+
+function showStatus(msg) {
+  statusBox.style.display = "block";
+  statusBox.textContent = msg;
+}
+
+function hideStatus() {
+  statusBox.style.display = "none";
+}
+
+/* ---------- بارگذاری دیتابیس محلی ---------- */
+
+const sitesPromise = fetch("./sites.json").then(res => {
+  if (!res.ok) throw new Error("فایل sites.json پیدا نشد!");
+  return res.json();
+});
+
+sitesPromise.then(sites => {
+  sites.forEach(site => {
+    const opt = document.createElement("option");
+    opt.value = site.titl
