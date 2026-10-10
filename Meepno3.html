@@ -365,4 +365,288 @@ const sitesPromise = fetch("./sites.json").then(res => {
 sitesPromise.then(sites => {
   sites.forEach(site => {
     const opt = document.createElement("option");
-    opt.value = site.titl
+    opt.value = site.title;
+    suggestionsList.appendChild(opt);
+  });
+}).catch(() => {});
+
+/* ---------- جستجوی محلی ---------- */
+
+function hostWord(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "").split(".")[0].toLowerCase();
+  } catch (e) {
+    return "";
+  }
+}
+
+function localSearch(sites, query) {
+  const qn = normalize(query);
+  const tokens = qn.split(/\s+/).filter(Boolean);
+  const out = [];
+
+  sites.forEach(site => {
+    const title = normalize(site.title);
+    const url = normalize(site.url);
+    const kws = (site.keywords || []).map(normalize);
+    const words = new Set(
+      [...title.split(/[^a-z0-9\u0600-\u06FF]+/), ...kws, hostWord(site.url)].filter(Boolean)
+    );
+
+    let score = 0;
+    if (title === qn) score += 100;
+    if (title.includes(qn)) score += 50;
+    if (url.includes(qn)) score += 30;
+    if (kws.some(k => k === qn)) score += 60;
+    else if (kws.some(k => k.includes(qn))) score += 40;
+
+    tokens.forEach(tok => {
+      let direct = false;
+      if (title.includes(tok)) { score += 10; direct = true; }
+      if (url.includes(tok)) { score += 5; direct = true; }
+      if (kws.some(k => k.includes(tok))) { score += 8; direct = true; }
+
+      // جستجوی فازی برای غلط تایپی
+      if (!direct && tok.length >= 3) {
+        const maxDist = tok.length <= 4 ? 1 : 2;
+        for (const w of words) {
+          if (Math.abs(w.length - tok.length) <= maxDist && levenshtein(w, tok) <= maxDist) {
+            score += 6;
+            break;
+          }
+        }
+      }
+    });
+
+    if (score > 0) {
+      out.push({
+        title: site.title,
+        url: site.url,
+        desc: "دسترسی مستقیم و سریع از طریق موتور جستجوی محلی MEEPNO به این آدرس معتبر.",
+        source: "محلی",
+        score: score
+      });
+    }
+  });
+
+  return out;
+}
+
+/* ---------- جستجوی آنلاین (بدون کلید API) ---------- */
+
+async function wikipediaSearch(query, lang) {
+  const qn = normalize(query);
+  const data = await getJSON(
+    `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&srlimit=5&format=json&origin=*`
+  );
+  return ((data.query && data.query.search) || []).map((it, i) => ({
+    title: it.title,
+    url: `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(it.title.replace(/ /g, "_"))}`,
+    desc: toPlainText(it.snippet),
+    source: "ویکی‌پدیا",
+    score: 40 - i * 4 + (normalize(it.title).includes(qn) ? 15 : 0)
+  }));
+}
+
+async function wikidataSearch(query, lang) {
+  const qn = normalize(query);
+  const data = await getJSON(
+    `https://www.wikidata.org/w/api.php?action=wbsearchentities&search=${encodeURIComponent(query)}&language=${lang}&uselang=${lang}&limit=4&format=json&origin=*`
+  );
+  return (data.search || []).map((it, i) => ({
+    title: it.label || it.id,
+    url: `https://www.wikidata.org/wiki/${it.id}`,
+    desc: it.description || "",
+    source: "ویکی‌داده",
+    score: 30 - i * 3 + (normalize(it.label).includes(qn) ? 10 : 0)
+  }));
+}
+
+async function githubSearch(query) {
+  const data = await getJSON(
+    `https://api.github.com/search/repositories?q=${encodeURIComponent(query)}&sort=stars&order=desc&per_page=5`
+  );
+  return (data.items || []).map((it, i) => ({
+    title: it.full_name,
+    url: it.html_url,
+    desc: (it.description || "") + "  ⭐ " + it.stargazers_count,
+    source: "GitHub",
+    score: 28 - i * 3
+  }));
+}
+
+async function stackOverflowSearch(query) {
+  const data = await getJSON(
+    `https://api.stackexchange.com/2.3/search/advanced?order=desc&sort=relevance&q=${encodeURIComponent(query)}&site=stackoverflow&pagesize=5`
+  );
+  return (data.items || []).map((it, i) => ({
+    title: toPlainText(it.title),
+    url: it.link,
+    desc: `پاسخ‌ها: ${it.answer_count} · امتیاز: ${it.score}` + (it.is_answered ? " · پاسخ داده شده" : ""),
+    source: "Stack Overflow",
+    score: 24 - i * 3
+  }));
+}
+
+/* ---------- ادغام و نمایش نتایج ---------- */
+
+let allResults = [];
+let pending = 0;
+let sitesError = "";
+
+function addItems(items) {
+  items.forEach(it => {
+    const href = safeUrl(it.url);
+    if (!href) return;
+    it.url = href;
+
+    const titleKey = normalize(it.title);
+    const existing = allResults.find(x =>
+      x.url === it.url ||
+      (x.source !== "محلی" && it.source !== "محلی" && normalize(x.title) === titleKey)
+    );
+
+    if (existing) {
+      if (it.score > existing.score) {
+        allResults[allResults.indexOf(existing)] = it;
+      }
+    } else {
+      allResults.push(it);
+    }
+  });
+  renderAll();
+}
+
+function renderAll() {
+  const sorted = allResults.slice().sort((a, b) => b.score - a.score);
+  resultsContainer.innerHTML = "";
+  if (sorted.length > 0) hideStatus();
+
+  sorted.forEach(item => {
+    const card = document.createElement("a");
+    card.className = "card";
+    card.href = item.url;
+    card.target = "_blank";
+    card.rel = "noopener noreferrer";
+
+    let siteName = "MEEPNO";
+    try {
+      siteName = new URL(item.url).hostname.replace(/^www\./, "");
+    } catch (e) {}
+
+    const top = makeEl("div", "card-top");
+    top.appendChild(makeEl("div", "icon", siteName.substring(0, 2).toUpperCase()));
+
+    const meta = makeEl("div", "meta-info");
+    meta.appendChild(makeEl("div", "name", siteName));
+    meta.appendChild(makeEl("div", "url", item.url));
+    top.appendChild(meta);
+    top.appendChild(makeEl("span", "badge", item.source));
+
+    const body = makeEl("div", "card-body");
+    const title = makeEl("div", "title", item.title);
+    title.dir = "auto";
+    body.appendChild(title);
+    if (item.desc) {
+      const desc = makeEl("div", "description", item.desc);
+      desc.dir = "auto";
+      body.appendChild(desc);
+    }
+
+    card.appendChild(top);
+    card.appendChild(body);
+    resultsContainer.appendChild(card);
+  });
+}
+
+function renderFallback(query) {
+  fallbackBox.innerHTML = "";
+  fallbackBox.appendChild(makeEl("span", "", "جستجو در:"));
+
+  const engines = [
+    ["DuckDuckGo", "https://duckduckgo.com/?q="],
+    ["Google", "https://www.google.com/search?q="]
+  ];
+  engines.forEach(([name, base]) => {
+    const a = makeEl("a", "", name);
+    a.href = base + encodeURIComponent(query);
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    fallbackBox.appendChild(a);
+  });
+  fallbackBox.style.display = "flex";
+}
+
+function finalize(query) {
+  if (allResults.length === 0) {
+    showStatus(sitesError ? "خطا در بارگذاری دیتابیس: " + sitesError : "نتیجه‌ای برای این عبارت پیدا نشد!");
+  }
+  renderFallback(query);
+}
+
+/* ---------- اجرای جستجو ---------- */
+
+async function performSearch(query) {
+  allResults = [];
+  resultsContainer.innerHTML = "";
+  fallbackBox.style.display = "none";
+  showStatus("در حال جستجو در MEEPNO...");
+
+  const hasFa = /[\u0600-\u06FF]/.test(query);
+  const hasLatin = /[a-z]/i.test(query);
+  const lang = hasFa ? "fa" : "en";
+
+  // ۱) نتایج محلی، فوری
+  try {
+    const sites = await sitesPromise;
+    addItems(localSearch(sites, query));
+  } catch (err) {
+    sitesError = err.message;
+  }
+
+  // ۲) نتایج آنلاین، هر کدوم مستقل (خرابی یکی روی بقیه اثر نداره)
+  const tasks = [
+    () => wikipediaSearch(query, lang),
+    () => wikidataSearch(query, lang)
+  ];
+  if (hasLatin) {
+    tasks.push(() => githubSearch(query));
+    tasks.push(() => stackOverflowSearch(query));
+  }
+
+  pending = tasks.length;
+  tasks.forEach(task => {
+    task()
+      .then(addItems)
+      .catch(() => {})
+      .finally(() => {
+        pending--;
+        if (pending === 0) finalize(query);
+      });
+  });
+}
+
+/* ---------- رویدادها ---------- */
+
+function submitQuery() {
+  const val = searchInput.value.trim();
+  if (val) {
+    window.location.href = location.pathname + "?q=" + encodeURIComponent(val);
+  }
+}
+
+searchForm.addEventListener("submit", e => {
+  e.preventDefault();
+  submitQuery();
+});
+searchBtn.addEventListener("click", submitQuery);
+
+const urlParams = new URLSearchParams(window.location.search);
+const initialQuery = urlParams.get("q");
+if (initialQuery && initialQuery.trim() !== "") {
+  searchInput.value = initialQuery;
+  performSearch(initialQuery.trim());
+}
+</script>
+</body>
+          </html>
