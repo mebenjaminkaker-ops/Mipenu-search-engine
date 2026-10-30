@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MEEPNO</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: #050505;
+  color: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  min-height: 100vh;
+  padding: 20px 16px;
+  display: flex;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.wrap { width: 100%; max-width: 850px; }
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 30px;
+}
+
+.logo {
+  direction: ltr;
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: 3px;
+  color: #000;
+  flex-shrink: 0;
+  -webkit-text-stroke: 1.2px #00ff88;
+  animation: glow 3.5s ease-in-out infinite alternate;
+  user-select: none;
+}
+
+@keyframes glow {
+  0% { -webkit-text-stroke-color: rgba(0,255,136,.2); text-shadow: 0 0 2px rgba(0,255,136,.1); }
+  50% { -webkit-text-stroke-color: rgba(0,255,136,.9); text-shadow: 0 0 10px rgba(0,255,136,.6), 0 0 20px rgba(0,255,136,.3); }
+  100% { -webkit-text-stroke-color: rgba(0,255,136,.2); text-shadow: 0 0 2px rgba(0,255,136,.1); }
+}
+
+form { flex: 1; }
+
+.box {
+  display: flex;
+  align-items: center;
+  height: 46px;
+  padding: 0 16px;
+  background: #000;
+  border: 1px solid #00ff88;
+  border-radius: 14px;
+  box-shadow: 0 0 12px rgba(0,255,136,.25), inset 0 0 8px rgba(0,255,136,.05);
+}
+
+.box input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  font-size: 15px;
+  text-align: right;
+}
+
+.box span {
+  font-size: 20px;
+  color: #00ff88;
+  cursor: pointer;
+  margin-right: 10px;
+  user-select: none;
+}
+
+#results { display: grid; gap: 14px; }
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  color: #fff;
+  text-decoration: none;
+  background: linear-gradient(110deg, #211010, #121212 75%);
+  border: 1px solid #353030;
+  border-radius: 15px;
+  transition: .2s;
+}
+
+.card:hover {
+  background: #251414;
+  border-color: #b33b3b;
+  transform: translateY(-2px);
+}
+
+.top { display: flex; align-items: center; gap: 10px; }
+
+.icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: #352020;
+  border: 1px solid #633333;
+  color: #ffaaaa;
+  font-size: 13px;
+  font-weight: bold;
+  direction: ltr;
+}
+
+.meta { min-width: 0; overflow: hidden; }
+
+.host {
+  font-size: 14px;
+  font-weight: bold;
+  direction: ltr;
+  text-align: right;
+  margin-bottom: 2px;
+}
+
+.link {
+  color: #aaa;
+  font-size: 11px;
+  direction: ltr;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.title {
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.desc {
+  margin-top: 4px;
+  color: #a0a0a0;
+  font-size: 12px;
+  line-height: 1.7;
+  text-align: right;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+#msg {
+  display: none;
+  padding: 20px;
+  margin-bottom: 14px;
+  color: #ffaaaa;
+  background: #201010;
+  border: 1px solid #502020;
+  border-radius: 12px;
+  text-align: right;
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  direction: ltr;
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <span class="logo">MEEPNO</span>
+    <form id="form">
+      <div class="box">
+        <input type="text" id="q" placeholder="جستجو..." autocomplete="off">
+        <span id="btn">⌕</span>
+      </div>
+    </form>
+  </header>
+
+  <div id="msg"></div>
+  <section id="results"></section>
+</div>
+
+<script>
+// ⬇️ آدرس پروژه کلادفلر شما ⬇️
+const API = "https://mipenu-search-engine.me-benjaminkaker.workers.dev";
+
+const input = document.getElementById("q");
+const form = document.getElementById("form");
+const btn = document.getElementById("btn");
+const box = document.getElementById("results");
+const msg = document.getElementById("msg");
+
+function say(text) {
+  msg.style.display = text ? "block" : "none";
+  msg.textContent = text || "";
+}
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text) e.textContent = text;
+  return e;
+}
+
+function go() {
+  const v = input.value.trim();
+  if (v) location.href = location.pathname + "?q=" + encodeURIComponent(v);
+}
+
+form.addEventListener("submit", e => { e.preventDefault(); go(); });
+btn.addEventListener("click", go);
+
+function card(r) {
+  let url;
+  try {
+    url = new URL(r.url);
+    if (!/^https?:$/.test(url.protocol)) return null;
+  } catch (e) {
+    return null;
+  }
+
+  const host = url.hostname.replace(/^www\./, "");
+  const a = el("a", "card");
+  a.href = url.href;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+
+  const top = el("div", "top");
+  top.appendChild(el("div", "icon", host.slice(0, 2).toUpperCase()));
+  const meta = el("div", "meta");
+  meta.appendChild(el("div", "host", host));
+  let shown = url.href;
+  try { shown = decodeURIComponent(url.href); } catch (e) {}
+  meta.appendChild(el("div", "link", shown));
+  top.appendChild(meta);
+  a.appendChild(top);
+
+  const title = el("div", "title", r.title || host);
+  title.dir = "auto";
+  a.appendChild(title);
+
+  if (r.content) {
+    const d = el("div", "desc", r.content);
+    d.dir = "auto";
+    a.appendChild(d);
+  }
+  return a;
+}
+
+async function search(q) {
+  say("در حال جستجو و اسکن خطاها...");
+  box.innerHTML = "";
+
+  try {
+    // ارسال درخواست با متد GET
+    const res = await fetch(`${API}?q=${encodeURIComponent(q)}`);
+
+    // گرفتن متن خام جواب سرور
+    const rawText = await res.text();
+    
+    let data;
+    try {
+      data = JSON.parse(rawText);
+    } catch (e) {
+      throw new Error("سرور جواب JSON نداد! جواب خام: \n" + rawText);
+    }
+
+    if (!res.ok) {
+      // اینجا دقیقاً خطای سرور (مثل 405 یا 500) و دلیلش رو نشون میدیم
+      say(`خطای HTTP (${res.status}):\n` + JSON.stringify(data, null, 2));
+      return;
+    }
+
+    const list = data.results || [];
+    if (!list.length) {
+      say("سرور جواب داد ولی نتیجه‌ای نداشت!\n" + JSON.stringify(data, null, 2));
+      return;
+    }
+
+    say(""); // پاک کردن پیام خطا
+    list.forEach(r => {
+      const c = card(r);
+      if (c) box.appendChild(c);
+    });
+  } catch (err) {
+    // اینجا خطاهای شبکه (مثل Failed to fetch) رو نشون میدیم
+    say("خطای شبکه/مرورگر:\n" + err.message);
+    console.error(err);
+  }
+}
+
+const q = new URLSearchParams(location.search).get("q");
+if (q && q.trim()) {
+    input.value = q;
+    search(q.trim());
+}
+</script>
+</body>
+</html>
